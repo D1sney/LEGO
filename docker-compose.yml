@@ -1,0 +1,176 @@
+# Убираем устаревшую директиву version для Docker Compose v2+
+
+networks:
+  lego_network:
+    driver: bridge
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lego_network
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"   # AMQP порт
+      - "15672:15672" # Web UI управления
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    networks:
+      - lego_network
+
+  # Database Migration
+  migrate:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lego_network
+
+  # Backend API
+  backend:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    container_name: backend
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - BASE_URL=${BASE_URL}
+      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    depends_on:
+      - migrate
+      - postgres
+      - rabbitmq
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./LEGO_API/logs:/app/logs
+    networks:
+      - lego_network
+
+  # Celery Worker
+  celery:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    container_name: celery_worker
+    command: celery -A src.celery_app worker --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    depends_on:
+      - migrate
+      - postgres
+      - rabbitmq
+    volumes:
+      - ./LEGO_API/logs:/app/logs
+    networks:
+      - lego_network
+
+  # Celery Beat Scheduler
+  celery-beat:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    container_name: celery_beat
+    command: celery -A src.celery_app beat --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    depends_on:
+      - migrate
+      - postgres
+      - rabbitmq
+    volumes:
+      - ./LEGO_API/logs:/app/logs
+      - celery_beat_data:/app/celerybeat-schedule
+    networks:
+      - lego_network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./LEGO_frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    depends_on:
+      - backend
+    networks:
+      - lego_network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:stable-alpine
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Для разработки (с документацией): ./nginx.dev.conf:/etc/nginx/nginx.conf
+      # Для продакшена (без документации): ./nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl  # для SSL сертификатов (опционально)
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - lego_network
+
+volumes:
+  postgres_data:
+  celery_beat_data: 

@@ -1,0 +1,130 @@
+# ======================
+# БЕЗОПАСНОСТЬ (КРИТИЧНО!)
+# ======================
+
+# Переменные окружения и секреты
+.env
+**/.env
+.env.local
+.env.production
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# SSL сертификаты
+ssl/
+**/ssl/
+certificates/
+certs/
+
+# Токены и API ключи  
+tokens.json
+**/tokens.json
+config/secrets.yml
+secrets/
+
+# ======================
+# DOCKER & INFRASTRUCTURE
+# ======================
+
+# Docker volumes (данные)
+postgres_data/
+celery_beat_data/
+rabbitmq_data/
+uploads/
+
+# Docker логи
+logs/
+**/logs/
+*.log
+
+# Docker временные файлы
+.dockerignore.bak
+
+# ======================
+# PYTHON
+# ======================
+
+# Кеши Python
+__pycache__/
+pycache/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Celery
+celerybeat*
+celerybeat-schedule*
+
+# ======================
+# РЕДАКТОРЫ & IDE
+# ======================
+
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+.cursor/
+**/.cursor/
+.cursorignore
+**/.cursorignore
+
+# Временные файлы редакторов
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ======================
+# ФАЙЛЫ ПРИЛОЖЕНИЯ
+# ======================
+
+# Статические файлы (если генерируются)
+static/build/
+static/dist/
+
+# Загружаемые файлы пользователей
+uploads/
+media/
+user_files/
+
+# Документы
+*.xls
+*.xlsx
+*.pdf
+*.doc
+*.docx
+
+# ======================
+# GIT & СИСТЕМНЫЕ
+# ======================
+
+**/.git/
+.gitattributes.bak
+
+# ======================
+# ВРЕМЕННЫЕ ФАЙЛЫ
+# ======================
+
+# Резервные копии
+*.bak
+*.backup
+*.tmp
+*.temp
+
+# Архивы  
+*.zip
+*.tar.gz
+*.rar

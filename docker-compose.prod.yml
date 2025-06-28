@@ -1,0 +1,235 @@
+version: "3.9"
+
+networks:
+  lego_network:
+    driver: bridge
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_prod
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lego_network
+    # В продакшене НЕ экспонируем порт наружу
+    # ports:
+    #   - "5432:5432"
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq_prod
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    networks:
+      - lego_network
+    # Порт управления доступен только внутри сети
+    # В продакшене можно закрыть порт 15672
+
+  # Database Migration
+  migrate:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lego_network
+    restart: "no"
+
+  # Backend API
+  backend:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    container_name: backend_prod
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - BASE_URL=${BASE_URL}
+      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    depends_on:
+      - migrate
+      - postgres
+      - rabbitmq
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - lego_network
+    # НЕ экспонируем порт наружу в продакшене
+    # ports:
+    #   - "8000:8000"
+
+  # Celery Worker
+  celery:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    container_name: celery_worker_prod
+    command: celery -A src.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    depends_on:
+      - migrate
+      - postgres
+      - rabbitmq
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - lego_network
+    # Автоматическое масштабирование (можно запустить несколько worker'ов)
+    scale: 2
+
+  # Celery Beat Scheduler
+  celery-beat:
+    build:
+      context: ./LEGO_API
+      dockerfile: Dockerfile
+    container_name: celery_beat_prod
+    command: celery -A src.celery_app beat --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    depends_on:
+      - migrate
+      - postgres
+      - rabbitmq
+    volumes:
+      - ./logs:/app/logs
+      - celery_beat_data:/app/celerybeat-schedule
+    restart: unless-stopped
+    networks:
+      - lego_network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./LEGO_frontend
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    container_name: frontend_prod
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - lego_network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:stable-alpine
+    container_name: nginx_prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+    networks:
+      - lego_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring (опционально)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - lego_network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    networks:
+      - lego_network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  celery_beat_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data: 
