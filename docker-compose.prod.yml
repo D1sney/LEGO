@@ -1,4 +1,4 @@
-version: "3.9"
+# Убираем устаревшую директиву version для Docker Compose v2+
 
 networks:
   lego_network:
@@ -7,7 +7,7 @@ networks:
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: postgres_prod
     environment:
       POSTGRES_DB: ${DB_NAME}
@@ -30,7 +30,7 @@ services:
 
   # RabbitMQ Message Broker
   rabbitmq:
-    image: rabbitmq:3-management-alpine
+    image: rabbitmq:3-management
     container_name: rabbitmq_prod
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
@@ -114,7 +114,7 @@ services:
     build:
       context: ./LEGO_API
       dockerfile: Dockerfile
-    container_name: celery_worker_prod
+    # НЕ используем container_name при scale > 1 (Docker создаст автоматически: lego-celery-1, lego-celery-2)
     command: celery -A src.celery_app worker --loglevel=info --concurrency=4
     environment:
       - DB_HOST=postgres
