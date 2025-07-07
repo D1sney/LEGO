@@ -49,12 +49,8 @@ services:
       context: ./LEGO_API
       dockerfile: Dockerfile
     command: alembic upgrade head
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,27 +63,10 @@ services:
       context: ./LEGO_API
       dockerfile: Dockerfile
     container_name: backend
+    env_file:
+      - .env
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-      - SECRET_KEY=${SECRET_KEY}
-      - ALGORITHM=${ALGORITHM}
-      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
-      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - EMAIL_FROM=${EMAIL_FROM}
-      - BASE_URL=${BASE_URL}
-      - RABBITMQ_HOST=${RABBITMQ_HOST}
-      - RABBITMQ_PORT=${RABBITMQ_PORT}
-      - RABBITMQ_USER=${RABBITMQ_USER}
-      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
-      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
     depends_on:
       - migrate
       - postgres
@@ -106,17 +85,8 @@ services:
       dockerfile: Dockerfile
     container_name: celery_worker
     command: celery -A src.celery_app worker --loglevel=info
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-      - RABBITMQ_HOST=${RABBITMQ_HOST}
-      - RABBITMQ_PORT=${RABBITMQ_PORT}
-      - RABBITMQ_USER=${RABBITMQ_USER}
-      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
-      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    env_file:
+      - .env
     depends_on:
       - migrate
       - postgres
@@ -133,17 +103,8 @@ services:
       dockerfile: Dockerfile
     container_name: celery_beat
     command: celery -A src.celery_app beat --loglevel=info
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=${DB_PORT}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-      - RABBITMQ_HOST=${RABBITMQ_HOST}
-      - RABBITMQ_PORT=${RABBITMQ_PORT}
-      - RABBITMQ_USER=${RABBITMQ_USER}
-      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
-      - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq//
+    env_file:
+      - .env
     depends_on:
       - migrate
       - postgres
