@@ -82,7 +82,8 @@ services:
       - ./uploads:/app/uploads
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # test: ["CMD", "curl", "-f", "http://backend:8000/health"]
+      test: ["CMD", "curl", "-f", "https://lego-collector.ru/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -140,6 +141,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NODE_ENV=production
+        - VUE_APP_API_URL=${VUE_APP_API_URL}
     container_name: frontend_prod
     depends_on:
       - backend
@@ -165,7 +167,8 @@ services:
     networks:
       - lego_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      # test: ["CMD", "curl", "-f", "http://nginx/health"]
+      test: ["CMD", "curl", "-f", "https://lego-collector.ru/health"]
       interval: 30s
       timeout: 10s
       retries: 3
