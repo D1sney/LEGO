@@ -1,8 +1,8 @@
 [submodule "LEGO_API"]
 	path = LEGO_API
-	url = git@github.com:D1sney/LEGO_API.git
+	url = https://github.com/D1sney/LEGO_API.git
 	branch = main
 [submodule "LEGO_frontend"]
 	path = LEGO_frontend
-	url = git@github.com:D1sney/LEGO_frontend.git
+	url = https://github.com/D1sney/LEGO_frontend.git
 	branch = main
