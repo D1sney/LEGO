@@ -73,6 +73,7 @@ services:
       - .env
     environment:
       - CELERY_BROKER_URL=pyamqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@${RABBITMQ_HOST}:${RABBITMQ_PORT}//
+      - ENV=production
     depends_on:
       - migrate
       - postgres
